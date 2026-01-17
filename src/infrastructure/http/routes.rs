@@ -42,6 +42,7 @@ pub fn create_routes() -> Router<Arc<AppState>> {
 /// API 路由
 fn api_routes() -> Router<Arc<AppState>> {
     Router::new()
+        .route("/ping", get(handlers::ping))
         .nest("/novel", novel_routes())
         .nest("/voice", voice_routes())
         .nest("/session", session_routes())
