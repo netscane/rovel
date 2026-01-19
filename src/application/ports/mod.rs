@@ -4,6 +4,7 @@
 
 mod audio_cache;
 mod audio_storage;
+mod audio_transcoder;
 mod repositories;
 mod session_manager;
 mod task_manager;
@@ -25,3 +26,6 @@ pub use session_manager::{Session, SessionError, SessionManagerPort};
 pub use task_manager::{InferenceTask, TaskError, TaskManagerPort, TaskState};
 pub use text_segmenter::{SegmentConfig, SegmentedText, TextSegmenterPort};
 pub use tts_engine::{InferRequest, InferResponse, TtsEnginePort, TtsError};
+pub use audio_transcoder::{
+    AudioFormat, AudioInfo, AudioTranscoderPort, TranscodeConfig, TranscodeError, TranscodeResult,
+};

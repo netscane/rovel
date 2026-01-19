@@ -10,5 +10,6 @@ mod types;
 
 pub use loader::{load_config, print_config, ConfigError};
 pub use types::{
-    AppConfig, DatabaseConfig, GcConfig, LogConfig, ServerConfig, StorageConfig, TtsConfig,
+    AppConfig, AudioConfig, DatabaseConfig, GcConfig, LogConfig, ServerConfig, StaticFilesConfig,
+    StorageConfig, TtsConfig,
 };

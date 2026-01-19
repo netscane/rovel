@@ -9,7 +9,9 @@ use crate::application::ports::{
     TaskManagerPort, TaskState,
     InferRequest, TtsEnginePort,
     VoiceRepositoryPort,
+    AudioTranscoderPort, TranscodeConfig,
 };
+use crate::config::AudioConfig;
 use crate::infrastructure::events::EventPublisher;
 
 /// Worker 配置
@@ -19,6 +21,8 @@ pub struct InferWorkerConfig {
     pub max_concurrent: usize,
     /// Rovel 服务的公开 Base URL（供 TTS 服务下载 voice reference）
     pub base_url: String,
+    /// 音频配置
+    pub audio: AudioConfig,
 }
 
 impl Default for InferWorkerConfig {
@@ -26,6 +30,7 @@ impl Default for InferWorkerConfig {
         Self {
             max_concurrent: 2,
             base_url: "http://localhost:5060".to_string(),
+            audio: AudioConfig::default(),
         }
     }
 }
@@ -41,6 +46,7 @@ pub struct InferWorker {
     tts_engine: Arc<dyn TtsEnginePort>,
     audio_cache: Arc<dyn AudioCachePort>,
     voice_repo: Arc<dyn VoiceRepositoryPort>,
+    audio_transcoder: Arc<dyn AudioTranscoderPort>,
     event_publisher: Arc<EventPublisher>,
 }
 
@@ -53,6 +59,7 @@ impl InferWorker {
         tts_engine: Arc<dyn TtsEnginePort>,
         audio_cache: Arc<dyn AudioCachePort>,
         voice_repo: Arc<dyn VoiceRepositoryPort>,
+        audio_transcoder: Arc<dyn AudioTranscoderPort>,
         event_publisher: Arc<EventPublisher>,
     ) -> Self {
         Self {
@@ -63,6 +70,7 @@ impl InferWorker {
             tts_engine,
             audio_cache,
             voice_repo,
+            audio_transcoder,
             event_publisher,
         }
     }
@@ -71,6 +79,8 @@ impl InferWorker {
     pub async fn run(mut self) {
         tracing::info!(
             max_concurrent = self.config.max_concurrent,
+            output_format = %self.config.audio.output_format,
+            transcode_enabled = self.config.audio.transcode_enabled,
             "InferWorker started"
         );
 
@@ -90,8 +100,10 @@ impl InferWorker {
             let tts_engine = self.tts_engine.clone();
             let audio_cache = self.audio_cache.clone();
             let voice_repo = self.voice_repo.clone();
+            let audio_transcoder = self.audio_transcoder.clone();
             let event_publisher = self.event_publisher.clone();
             let base_url = self.config.base_url.clone();
+            let audio_config = self.config.audio.clone();
 
             tokio::spawn(async move {
                 let _permit = permit; // 持有 permit 直到任务完成
@@ -103,8 +115,10 @@ impl InferWorker {
                     tts_engine,
                     audio_cache,
                     voice_repo,
+                    audio_transcoder,
                     event_publisher,
                     &base_url,
+                    &audio_config,
                 )
                 .await;
             });
@@ -114,6 +128,7 @@ impl InferWorker {
     }
 
     /// 处理单个任务
+    #[allow(clippy::too_many_arguments)]
     async fn process_task(
         task_id: &str,
         task_manager: Arc<dyn TaskManagerPort>,
@@ -121,8 +136,10 @@ impl InferWorker {
         tts_engine: Arc<dyn TtsEnginePort>,
         audio_cache: Arc<dyn AudioCachePort>,
         voice_repo: Arc<dyn VoiceRepositoryPort>,
+        audio_transcoder: Arc<dyn AudioTranscoderPort>,
         event_publisher: Arc<EventPublisher>,
         base_url: &str,
+        audio_config: &AudioConfig,
     ) {
         // 获取任务信息
         let task = match task_manager.get_task(task_id) {
@@ -231,17 +248,70 @@ impl InferWorker {
             return;
         }
 
+        // 转码音频（如果启用）
+        let (final_audio_data, final_duration_ms, final_sample_rate) =
+            if audio_config.transcode_enabled {
+                let transcode_config = TranscodeConfig {
+                    format: audio_config.output_format,
+                    bitrate: Some(audio_config.bitrate),
+                    sample_rate: if audio_config.sample_rate > 0 {
+                        Some(audio_config.sample_rate)
+                    } else {
+                        None
+                    },
+                    channels: if audio_config.channels > 0 {
+                        Some(audio_config.channels)
+                    } else {
+                        None
+                    },
+                };
+
+                match audio_transcoder
+                    .transcode(&response.audio_data, &transcode_config)
+                    .await
+                {
+                    Ok(result) => {
+                        tracing::debug!(
+                            task_id = %task_id,
+                            original_size = response.audio_data.len(),
+                            transcoded_size = result.transcoded_size,
+                            format = %result.format,
+                            "Audio transcoded"
+                        );
+                        (result.audio_data, result.duration_ms, Some(result.sample_rate))
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            task_id = %task_id,
+                            error = %e,
+                            "Transcode failed, using original audio"
+                        );
+                        (
+                            response.audio_data.clone(),
+                            response.duration_ms.unwrap_or(0),
+                            response.sample_rate,
+                        )
+                    }
+                }
+            } else {
+                (
+                    response.audio_data.clone(),
+                    response.duration_ms.unwrap_or(0),
+                    response.sample_rate,
+                )
+            };
+
         // 存储到缓存
         let metadata = CacheMetadata {
             novel_id: task.novel_id,
             segment_index: task.segment_index,
             voice_id: task.voice_id,
             content_hash: cache_key.clone(),
-            duration_ms: response.duration_ms.unwrap_or(0),
-            sample_rate: response.sample_rate,
+            duration_ms: final_duration_ms,
+            sample_rate: final_sample_rate,
         };
 
-        if let Err(e) = audio_cache.put(&cache_key, response.audio_data, metadata).await {
+        if let Err(e) = audio_cache.put(&cache_key, final_audio_data, metadata).await {
             tracing::error!(task_id = %task_id, error = %e, "Failed to cache audio");
             let _ = task_manager.set_failed(task_id, format!("Cache error: {}", e));
             event_publisher.publish_task_failed(

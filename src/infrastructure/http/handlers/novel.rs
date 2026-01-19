@@ -131,8 +131,8 @@ pub async fn upload_novel(
                     .await
                     .map_err(|e| ApiError::BadRequest(format!("Failed to read file: {}", e)))?;
 
-                // 验证文件大小（最大 50MB）
-                const MAX_SIZE: usize = 50 * 1024 * 1024;
+                // 验证文件大小（最大 100MB）
+                const MAX_SIZE: usize = 100 * 1024 * 1024;
                 if bytes.len() > MAX_SIZE {
                     return Err(ApiError::BadRequest(format!(
                         "File too large. Maximum size is {} MB",

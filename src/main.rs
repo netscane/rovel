@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use rovel::config::{load_config, print_config};
-use rovel::infrastructure::adapters::{HttpTtsClient, HttpTtsClientConfig};
+use rovel::infrastructure::adapters::{HttpTtsClient, HttpTtsClientConfig, WavTranscoder};
 // use rovel::infrastructure::adapters::{FakeTtsClient, FakeTtsClientConfig};
 use rovel::infrastructure::events::EventPublisher;
 use rovel::infrastructure::http::{AppState, HttpServer, ServerConfig};
@@ -92,10 +92,14 @@ async fn main() -> anyhow::Result<()> {
     let session_manager = Arc::new(InMemorySessionManager::new());
     let task_manager = Arc::new(InMemoryTaskManager::new(task_tx));
 
+    // 创建音频转码器
+    let audio_transcoder = Arc::new(WavTranscoder::new(config.audio.transcode_enabled));
+
     // 创建 InferWorker
     let worker_config = InferWorkerConfig {
         max_concurrent: 2,
         base_url: config.server.public_base_url(),
+        audio: config.audio.clone(),
     };
     let worker = InferWorker::new(
         worker_config,
@@ -105,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
         tts_engine.clone(),
         audio_cache.clone(),
         voice_repo.clone(),
+        audio_transcoder,
         event_publisher.clone(),
     );
 
@@ -112,7 +117,16 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(worker.run());
 
     // 创建 HTTP 服务器
-    let server_config = ServerConfig::new(&config.server.host, config.server.port);
+    let mut server_config = ServerConfig::new(&config.server.host, config.server.port);
+    
+    // 配置静态文件服务
+    if config.server.static_files.enabled {
+        server_config = server_config.with_static_files(
+            config.server.static_files.dir.clone(),
+            config.server.static_files.path.clone(),
+        );
+    }
+    
     let state = AppState::new(
         session_manager,
         task_manager,

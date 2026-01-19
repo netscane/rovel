@@ -27,6 +27,20 @@ port = 5060
 # 环境变量: ROVEL_SERVER__BASE_URL
 # base_url = "http://192.168.1.100:5060"
 
+# 静态文件服务配置（用于托管 Web 客户端）
+[server.static_files]
+# 是否启用静态文件服务
+# 环境变量: ROVEL_SERVER__STATIC_FILES__ENABLED
+enabled = false
+
+# 静态文件目录
+# 环境变量: ROVEL_SERVER__STATIC_FILES__DIR
+dir = "web"
+
+# URL 路径前缀（"/" 表示托管在根路径，API 路由优先）
+# 环境变量: ROVEL_SERVER__STATIC_FILES__PATH
+path = "/"
+
 # ============================================================================
 # TTS 引擎配置
 # ============================================================================
@@ -42,6 +56,39 @@ timeout_secs = 120
 # 最大重试次数
 # 环境变量: ROVEL_TTS__MAX_RETRIES
 max_retries = 0
+
+# ============================================================================
+# 音频配置
+# ============================================================================
+[audio]
+# 输出格式: wav, opus, mp3
+# wav: 原始格式，不转码（默认）
+# opus: 推荐用于实时播放，体积小，质量好
+# mp3: 通用兼容格式
+# 环境变量: ROVEL_AUDIO__OUTPUT_FORMAT
+output_format = "wav"
+
+# 是否启用转码
+# 启用后会将 TTS 返回的 WAV 转码为指定格式
+# 环境变量: ROVEL_AUDIO__TRANSCODE_ENABLED
+transcode_enabled = false
+
+# 目标比特率（bps），用于有损压缩格式
+# Opus 推荐: 16000-64000 用于语音
+# 环境变量: ROVEL_AUDIO__BITRATE
+bitrate = 32000
+
+# 目标采样率（Hz）
+# 0 表示保持原始采样率
+# 环境变量: ROVEL_AUDIO__SAMPLE_RATE
+sample_rate = 0
+
+# 声道数
+# 0: 保持原始声道数
+# 1: 单声道（推荐用于语音）
+# 2: 立体声
+# 环境变量: ROVEL_AUDIO__CHANNELS
+channels = 1
 
 # ============================================================================
 # 数据库配置

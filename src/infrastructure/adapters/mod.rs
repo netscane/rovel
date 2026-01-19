@@ -4,6 +4,8 @@
 
 pub mod tts;
 pub mod storage;
+pub mod transcoder;
 
 pub use tts::*;
 pub use storage::*;
+pub use transcoder::*;

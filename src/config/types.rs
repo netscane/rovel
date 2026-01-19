@@ -5,6 +5,8 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 
+use crate::application::ports::AudioFormat;
+
 /// 应用主配置
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
@@ -15,6 +17,10 @@ pub struct AppConfig {
     /// TTS 引擎配置
     #[serde(default)]
     pub tts: TtsConfig,
+
+    /// 音频配置
+    #[serde(default)]
+    pub audio: AudioConfig,
 
     /// 数据库配置
     #[serde(default)]
@@ -38,6 +44,7 @@ impl Default for AppConfig {
         Self {
             server: ServerConfig::default(),
             tts: TtsConfig::default(),
+            audio: AudioConfig::default(),
             database: DatabaseConfig::default(),
             storage: StorageConfig::default(),
             gc: GcConfig::default(),
@@ -61,6 +68,48 @@ pub struct ServerConfig {
     /// 如果未设置，则使用 http://{host}:{port}
     #[serde(default)]
     pub base_url: Option<String>,
+
+    /// 静态文件服务配置
+    #[serde(default)]
+    pub static_files: StaticFilesConfig,
+}
+
+/// 静态文件服务配置
+#[derive(Debug, Clone, Deserialize)]
+pub struct StaticFilesConfig {
+    /// 是否启用静态文件服务
+    #[serde(default = "default_static_enabled")]
+    pub enabled: bool,
+
+    /// 静态文件目录
+    #[serde(default = "default_static_dir")]
+    pub dir: PathBuf,
+
+    /// URL 路径前缀（如 "/" 表示根路径托管）
+    #[serde(default = "default_static_path")]
+    pub path: String,
+}
+
+fn default_static_enabled() -> bool {
+    false
+}
+
+fn default_static_dir() -> PathBuf {
+    PathBuf::from("web")
+}
+
+fn default_static_path() -> String {
+    "/".to_string()
+}
+
+impl Default for StaticFilesConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_static_enabled(),
+            dir: default_static_dir(),
+            path: default_static_path(),
+        }
+    }
 }
 
 fn default_host() -> String {
@@ -77,6 +126,7 @@ impl Default for ServerConfig {
             host: default_host(),
             port: default_port(),
             base_url: None,
+            static_files: StaticFilesConfig::default(),
         }
     }
 }
@@ -130,6 +180,58 @@ impl Default for TtsConfig {
             url: default_tts_url(),
             timeout_secs: default_tts_timeout(),
             max_retries: 0,
+        }
+    }
+}
+
+/// 音频配置
+#[derive(Debug, Clone, Deserialize)]
+pub struct AudioConfig {
+    /// 输出格式
+    /// 可选: wav, opus, mp3
+    #[serde(default)]
+    pub output_format: AudioFormat,
+
+    /// 是否启用转码
+    #[serde(default = "default_transcode_enabled")]
+    pub transcode_enabled: bool,
+
+    /// 目标比特率（bps），用于有损压缩格式
+    /// Opus 推荐: 16000-64000 用于语音
+    #[serde(default = "default_bitrate")]
+    pub bitrate: u32,
+
+    /// 目标采样率（Hz）
+    /// 如果为 0，则保持原始采样率
+    #[serde(default)]
+    pub sample_rate: u32,
+
+    /// 声道数
+    /// 0 表示保持原始声道数，1 表示单声道，2 表示立体声
+    #[serde(default = "default_channels")]
+    pub channels: u8,
+}
+
+fn default_transcode_enabled() -> bool {
+    false
+}
+
+fn default_bitrate() -> u32 {
+    32000 // 32kbps，语音足够
+}
+
+fn default_channels() -> u8 {
+    1 // 单声道
+}
+
+impl Default for AudioConfig {
+    fn default() -> Self {
+        Self {
+            output_format: AudioFormat::Wav,
+            transcode_enabled: default_transcode_enabled(),
+            bitrate: default_bitrate(),
+            sample_rate: 0,
+            channels: default_channels(),
         }
     }
 }
